@@ -1,0 +1,23 @@
+{
+  "name": "noqgeoapi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "createStore.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smitaag/NoQGeoAPI.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/smitaag/NoQGeoAPI/issues"
+  },
+  "homepage": "https://github.com/smitaag/NoQGeoAPI#readme",
+  "dependencies": {
+    "dynamodb-geo": "^0.4.0",
+    "uuid": "^8.0.0"
+  }
+}
