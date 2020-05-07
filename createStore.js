@@ -85,7 +85,7 @@ module.exports.handler = async (event, context) => {
         resp: isSuccess ? {
           hash: hashKey.toString(),
           id: range
-        } : {},
+        } : null,
       },
       null,
       2
