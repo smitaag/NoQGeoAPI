@@ -1,18 +1,18 @@
 'use strict';
 
-const AWS = require('aws-sdk')
-AWS.config.update({ region: process.env.REGION })
+const AWS = require('aws-sdk');
+AWS.config.update({ region: process.env.REGION });
 
-const ddb = new AWS.DynamoDB()
-const ddbGeo = require('dynamodb-geo')
+const ddb = new AWS.DynamoDB();
+const ddbGeo = require('dynamodb-geo');
 
-const config = new ddbGeo.GeoDataManagerConfiguration(ddb, process.env.GEO_TABLE)
+const config = new ddbGeo.GeoDataManagerConfiguration(ddb, process.env.GEO_TABLE);
 // Pick a hashKeyLength appropriate to your usage
-config.hashKeyLength = 6
+config.hashKeyLength = process.env.GEO_HASH_LEN;
 
-const myGeoTableManager = new ddbGeo.GeoDataManager(config)
+const myGeoTableManager = new ddbGeo.GeoDataManager(config);
 // For random numbers
-const uuid = require('uuid')
+const uuid = require('uuid');
 
 
 module.exports.handler = async (event, context) => {
@@ -41,7 +41,7 @@ module.exports.handler = async (event, context) => {
 
   var id = uuid.v4();
   var hashKey = myGeoTableManager.getGeoHashKey(store.lat, store.lon);
-  var range = store.tp + "#" + id;
+  var range = store.tp + "+" + id;
 
   await myGeoTableManager.putPoint({
     RangeKeyValue: { S: range }, // Use this to ensure uniqueness of the hash/range pairs.

@@ -26,9 +26,10 @@ provider:
   environment:
     GEO_TABLE: 'Geo-${self:service}-${self:provider.stage}'
     REGION: '${self:provider.region}'
+    GEO_HASH_LEN: 6 
 
 # you can overwrite defaults here
-  stage: dev
+  stage: test1
   region: us-east-1
   iamRoleStatements:
    - Effect: "Allow"
@@ -152,6 +153,8 @@ resources:
             AttributeType: N
           - AttributeName: rangeKey
             AttributeType: S
+          - AttributeName: geohash
+            AttributeType: N
         KeySchema:
           - AttributeName: hashKey
             KeyType: HASH
@@ -160,4 +163,13 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
+        LocalSecondaryIndexes:
+        - IndexName: geohash-index
+          KeySchema:
+          - AttributeName: hashKey
+            KeyType: HASH
+          - AttributeName: geohash
+            KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
  
