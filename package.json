@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/smitaag/NoQGeoAPI#readme",
   "dependencies": {
+    "aws-sdk": "^2.673.0",
     "dynamodb-geo": "^0.4.0",
     "uuid": "^8.0.0"
   }

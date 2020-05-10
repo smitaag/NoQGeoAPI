@@ -48,8 +48,14 @@ module.exports.handler = async (event, context) => {
     await db.get(params).promise()
       .then(result => {
         if (result && result.Item) {
-          result.Item.geohash = 0;//setting it to 0 as it is not required to be exposed to client and also deserialization in failing
-          store = result.Item;
+          var item = result.Item;
+          var geo = JSON.parse(item.geoJson);
+          item.geohash = 0;//setting it to 0 as it is not required to be exposed to client and also deserialization in failing
+
+          item.lat = geo.coordinates[1];
+          item.lon = geo.coordinates[0];
+          item.geoJson = null;
+          store = item;
         }
 
       })
@@ -93,7 +99,7 @@ module.exports.handler = async (event, context) => {
         statusCode: 500,
         body: JSON.stringify(
           {
-            message: "Error occurred while searching for stores: " + error,
+            message: "Error geting the entity: " + geoHash + "+" + id + " - Error: " + error,
             code: "SERVER_FAILURE",
             resp: null,
 
