@@ -7,45 +7,68 @@ const db = new AWS.DynamoDB.DocumentClient({ region: process.env.REGION });
 module.exports.handler = async (event, context) => {
 
   try {
-
     var geoHash = "";
-    var id = "";
+    var entity_id = "";
+    var geoRange = "";
 
     if (event && event.pathParameters && event.pathParameters.id) {
-      id = event.pathParameters.id;
-      //expected format should be hash#type#GUID
-      var arr = id.split("+");
-
-      if (arr.length == 3) {
-        geoHash = parseInt(arr[0]);
-        id = arr[1] + "+" + arr[2];
-      } else {
-        return {
-          statusCode: 422,
-          body: JSON.stringify(
-            {
-              message: 'Store id is not in the correct format',
-              code: "INVALID_ARGUMENT"
-            },
-            null,
-            2
-          ),
-        };
-      }
+      entity_id = event.pathParameters.id;
+    } else {
+      return {
+        statusCode: 422,
+        body: JSON.stringify(
+          {
+            message: 'Geo-Entity id is not in the correct format',
+            code: "INVALID_ARGUMENT"
+          },
+          null,
+          2
+        ),
+      };
     }
 
-    const params = {
+    var entity_params = {
+      ExpressionAttributeValues: {
+        ':pk': entity_id,
+        ':sk': "GEO#"
+      },
+      KeyConditionExpression: 'pk1 = :pk and begins_with(sk1, :sk)',
+      TableName: process.env.ENTITY_TABLE
+    };
+
+    await db.query(entity_params).promise()
+      .then(result => {
+        if (result && result.Items) {
+          var entity_geo = result.Items[0];
+
+          //sk1 should be "GEO#GR#345987"
+          var arr = entity_geo.sk1.split("#");
+
+          if (arr.length == 3) {
+            geoHash = arr[2];
+
+            //geoRange be of format "GR#Name#UUID"
+            geoRange = arr[1] + "#" + entity_geo.d1 + "#" + entity_id;
+          }
+        }
+      })
+      .catch(ex => {
+        console.log("Error reading the entity: " + ex);
+        error = ex;
+      });
+
+    const geo_params = {
       TableName: process.env.GEO_TABLE,
       Key: {
         'hashKey': geoHash,
-        'rangeKey': id
+        'rangeKey': geoRange
       },
     };
 
     var store = null;
     var error;
 
-    await db.get(params).promise()
+    await db.get(geo_params).promise()
       .then(result => {
         if (result && result.Item) {
           var item = result.Item;
@@ -57,7 +80,6 @@ module.exports.handler = async (event, context) => {
           item.geoJson = null;
           store = item;
         }
-
       })
       .catch(ex => {
         console.log("Error reading the entity: " + ex);
@@ -69,7 +91,7 @@ module.exports.handler = async (event, context) => {
         statusCode: 404,
         body: JSON.stringify(
           {
-            message: "Store not found with id: " + geoHash + "+" + id,
+            message: "Store not found with id: " + geoHash + "#" + geoRange,
             code: "NOT_FOUND",
             resp: null
           },
@@ -99,7 +121,7 @@ module.exports.handler = async (event, context) => {
         statusCode: 500,
         body: JSON.stringify(
           {
-            message: "Error geting the entity: " + geoHash + "+" + id + " - Error: " + error,
+            message: "Error geting the entity: " + geoHash + "#" + geoRange + " - Error: " + error,
             code: "SERVER_FAILURE",
             resp: null,
 

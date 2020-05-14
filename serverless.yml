@@ -25,6 +25,7 @@ provider:
   runtime: nodejs12.x
   environment:
     GEO_TABLE: 'Geo-${self:service}-${self:provider.stage}'
+    ENTITY_TABLE: 'Entity-${self:service}-${self:provider.stage}'
     REGION: '${self:provider.region}'
     GEO_HASH_LEN: 6 
 

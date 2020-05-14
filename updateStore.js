@@ -62,34 +62,28 @@ module.exports.handler = async (event, context) => {
     var inpuStore = null;
     var store = null;
     var guid = "";
+    var entity_id = "";
+    var geoRange = "";
 
     if (event && event.pathParameters && event.pathParameters.id) {
-      id = event.pathParameters.id;
-      //expected format should be hash#type#GUID
-      var arr = id.split("+");
-
-      if (arr.length == 3) {
-        geoHash = parseInt(arr[0]);
-        id = arr[1] + "+" + arr[2];
-        guid = arr[2];
-      } else {
-        return {
-          statusCode: 422,
-          body: JSON.stringify(
-            {
-              message: 'Store id is not in the correct format',
-              code: "INVALID_ARGUMENT"
-            },
-            null,
-            2
-          ),
-        };
-      }
+      entity_id = event.pathParameters.id;
+    } else {
+      return {
+        statusCode: 422,
+        body: JSON.stringify(
+          {
+            message: 'Geo-Entity id is not in the correct format',
+            code: "INVALID_ARGUMENT"
+          },
+          null,
+          2
+        ),
+      };
     }
 
     inpuStore = JSON.parse(event.body);
 
-    if (!inpuStore.tp || !inpuStore.nm || !inpuStore.adrs || !inpuStore.lcty || !inpuStore.inApt || !inpuStore.lat
+    if (!inpuStore.tp || !inpuStore.nm || !inpuStore.adrs || !inpuStore.lcty || !inpuStore.lat
       || !inpuStore.lon || !inpuStore.ph || !inpuStore.mgr || !inpuStore.opnAt || !inpuStore.clsAt || !inpuStore.sltDur || !inpuStore.maxPerSlt
     ) {
       return {
@@ -105,12 +99,42 @@ module.exports.handler = async (event, context) => {
       };
     }
 
+    var entity_params = {
+      ExpressionAttributeValues: {
+        ':pk': entity_id,
+        ':sk': "GEO#"
+      },
+      KeyConditionExpression: 'pk1 = :pk and begins_with(sk1, :sk)',
+      TableName: process.env.ENTITY_TABLE
+    };
+
+    await db.query(entity_params).promise()
+      .then(result => {
+        if (result && result.Items) {
+          var entity_geo = result.Items[0];
+
+          //sk1 should be "GEO#GR#345987"
+          var arr = entity_geo.sk1.split("#");
+
+          if (arr.length == 3) {
+            geoHash = arr[2];
+
+            //geoRange be of format "GR#Name#UUID"
+            geoRange = arr[1] + "#" + entity_geo.d1 + "#" + entity_id;
+          }
+        }
+      })
+      .catch(ex => {
+        console.log("Error reading the entity: " + ex);
+        error = ex;
+      });
+
     //1. Get the store object
     const params = {
       TableName: process.env.GEO_TABLE,
       Key: {
         'hashKey': geoHash,
-        'rangeKey': id
+        'rangeKey': geoRange
       },
     };
 
@@ -130,7 +154,7 @@ module.exports.handler = async (event, context) => {
       })
       .catch(ex => {
         error = ex;
-        console.error("Error geting the entity: " + geoHash + "+" + id + " - Error: " + error);
+        console.error("Error geting the entity: " + geoHash + "#" + geoRange + " - Error: " + error);
       });
 
     if (store == null && error == null) {
@@ -138,7 +162,7 @@ module.exports.handler = async (event, context) => {
         statusCode: 404,
         body: JSON.stringify(
           {
-            message: "Store not found with id: " + geoHash + "+" + id,
+            message: "Store not found with id: " + geoHash + "#" + geoRange,
             code: "NOT_FOUND",
             resp: null
           },
@@ -157,24 +181,23 @@ module.exports.handler = async (event, context) => {
         })
         .catch(ex => {
           error = ex;
-          console.error("Error deleting the entity: " + geoHash + "+" + id + " - Error: " + error);
+          console.error("Error deleting the entity: " + geoHash + "#" + geoRange + " - Error: " + error);
         });
 
       if (error == null) {
         //re-create now with the same id
         await myGeoTableManager.putPoint({
-          RangeKeyValue: { S: id }, // Use this to ensure uniqueness of the hash/range pairs.
+          RangeKeyValue: { S: geoRange }, // Use this to ensure uniqueness of the hash/range pairs.
           GeoPoint: { // An object specifying latitutde and longitude as plain numbers. Used to build the geohash, the hashkey and geojson data
             latitude: inpuStore.lat,
             longitude: inpuStore.lon
           },
           PutItemInput: { // Passed through to the underlying DynamoDB.putItem request. TableName is filled in for you.
             Item: { // The primary key, geohash and geojson data is filled in for you
-              tp: { S: inpuStore.tp },
               nm: { S: inpuStore.nm },
+              tp: { S: inpuStore.tp },
               adrs: { S: inpuStore.adrs },
               lcty: { S: inpuStore.lcty },
-              inApt: { S: inpuStore.inApt },
               ph: { S: inpuStore.ph },
               mgr: { S: inpuStore.mgr },
               rgnm: { S: inpuStore.rgnm },
@@ -193,7 +216,7 @@ module.exports.handler = async (event, context) => {
         }).promise()
           .then(function () { }).catch(function (msg) {
             error = msg;
-            console.error("Error recreating the entity: " + geoHash + "+" + id + " - Error: " + error);
+            console.error("Error recreating the entity: " + geoHash + "#" + geoRange + " - Error: " + error);
           });
       }
     }
@@ -207,7 +230,7 @@ module.exports.handler = async (event, context) => {
       var updateExp = constructUpdateExpression(changedProps, expAtrValues);
 
       await myGeoTableManager.updatePoint({
-        RangeKeyValue: { S: id },
+        RangeKeyValue: { S: geoRange },
         GeoPoint: {
           latitude: inpuStore.lat,
           longitude: inpuStore.lon
@@ -222,7 +245,7 @@ module.exports.handler = async (event, context) => {
         })
         .catch(msg => {
           error = msg;
-          console.error("Error updating the entity: " + geoHash + "+" + id + " - Error: " + error);
+          console.error("Error updating the entity: " + geoHash + "#" + geoRange + " - Error: " + error);
         });
     }
 
@@ -235,7 +258,7 @@ module.exports.handler = async (event, context) => {
             code: "SUCCESS",
             resp: {
               hash: myGeoTableManager.getGeoHashKey(inpuStore.lat, inpuStore.lon).toString(),
-              id: inpuStore.tp + "+" + guid
+              id: inpuStore.tp + "#" + guid
             }
           },
           null,
@@ -248,7 +271,7 @@ module.exports.handler = async (event, context) => {
         statusCode: 500,
         body: JSON.stringify(
           {
-            message: "Error occurred while updating the store with id: " + geoHash + "+" + id + " - Error: " + error,
+            message: "Error occurred while updating the store with id: " + geoHash + "#" + geoRange + " - Error: " + error,
             code: "SERVER_FAILURE",
             resp: null,
           },

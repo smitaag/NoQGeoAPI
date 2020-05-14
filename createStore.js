@@ -3,6 +3,8 @@
 const AWS = require('aws-sdk');
 AWS.config.update({ region: process.env.REGION });
 
+const db = new AWS.DynamoDB.DocumentClient({ region: process.env.REGION });
+
 const ddb = new AWS.DynamoDB();
 const ddbGeo = require('dynamodb-geo');
 
@@ -14,14 +16,13 @@ const myGeoTableManager = new ddbGeo.GeoDataManager(config);
 // For random numbers
 const uuid = require('uuid');
 
-
 module.exports.handler = async (event, context) => {
 
   try {
 
     var store = JSON.parse(event.body);
 
-    if (!store.tp || !store.nm || !store.adrs || !store.lcty || !store.inApt || !store.lat
+    if (!store.tp || !store.nm || !store.adrs || !store.lcty || !store.lat
       || !store.lon || !store.ph || !store.mgr || !store.opnAt || !store.clsAt || !store.sltDur || !store.maxPerSlt
     ) {
       return {
@@ -42,7 +43,7 @@ module.exports.handler = async (event, context) => {
 
     var id = uuid.v4();
     var hashKey = myGeoTableManager.getGeoHashKey(store.lat, store.lon);
-    var range = store.tp + "+" + id;
+    var range = store.tp + "#" + store.name + "#" + id;
 
     await myGeoTableManager.putPoint({
       RangeKeyValue: { S: range }, // Use this to ensure uniqueness of the hash/range pairs.
@@ -52,11 +53,10 @@ module.exports.handler = async (event, context) => {
       },
       PutItemInput: { // Passed through to the underlying DynamoDB.putItem request. TableName is filled in for you.
         Item: { // The primary key, geohash and geojson data is filled in for you
-          tp: { S: store.tp },
           nm: { S: store.nm },
+          tp: { S: store.tp },
           adrs: { S: store.adrs },
           lcty: { S: store.lcty },
-          inApt: { S: store.inApt },
           ph: { S: store.ph },
           mgr: { S: store.mgr },
           rgnm: { S: store.rgnm },
@@ -73,8 +73,27 @@ module.exports.handler = async (event, context) => {
         }
       }
     }).promise()
-      .then(function () { isSuccess = true; }).catch(function (msg) { isSuccess = false; innerMessage = msg; });
+      .then(function () { isSuccess = true; }).
+      catch(function (msg) {
+        isSuccess = false;
+        innerMessage = msg;
+        console.error("Error creating Entity in the GEO table: " + hashKey + ":" + range + "Error - " + msg);
+      });
 
+    //now create the Entity_GEO entry in the Entity Table
+    var sortKey = "GEO#" + store.tp + "#" + hashKey.toString();
+    const params = {
+      TableName: process.env.ENTITY_TABLE,
+      Item: { "pk1": id, "sk1": sortKey, "d1": store.nm }
+    };
+
+    await db.put(params).promise().
+      then(function () { isSuccess = true; }).
+      catch(function (msg) {
+        isSuccess = false;
+        innerMessage = msg;
+        console.error("Error creating Entity in the Entity table: " + hashKey + ":" + range + "Error - " + msg);
+      });
 
     return {
       statusCode: isSuccess ? 201 : 500,
@@ -83,8 +102,7 @@ module.exports.handler = async (event, context) => {
           message: isSuccess ? "Store created!" : "Store creation failed - " + innerMessage,
           code: isSuccess ? "CREATED" : "SERVER_FAILURE",
           resp: isSuccess ? {
-            hash: hashKey.toString(),
-            id: range
+            id: id
           } : null,
         },
         null,
